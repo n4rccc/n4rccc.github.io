@@ -253,8 +253,11 @@
 <div class="scan-wrap">
   <video id="video" playsinline muted></video>
   <div class="reticle"><div class="reticle-box" id="reticleBox"></div></div>
+  <div id="startOverlay" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.55);">
+    <button class="btn-primary" id="btnStart" style="padding:14px 28px;font-size:15px;">Mulai Scan</button>
+  </div>
 </div>
-<div class="status-bar"><div class="status" id="statusText">Menyalakan kamera...</div></div>
+<div class="status-bar"><div class="status" id="statusText">Tap "Mulai Scan" untuk aktifkan kamera</div></div>
 
 <div class="controls">
   <button class="btn-primary" id="btnResume">Scan Lagi</button>
@@ -298,6 +301,8 @@ const btnResume = document.getElementById('btnResume');
 const btnSwitch = document.getElementById('btnSwitch');
 const btnClear = document.getElementById('btnClear');
 const btnCopy = document.getElementById('btnCopy');
+const btnStart = document.getElementById('btnStart');
+const startOverlay = document.getElementById('startOverlay');
 
 let history = [];
 let scanning = true;
@@ -325,22 +330,50 @@ function detectCourier(code) {
   return 'Kurir Tidak Dikenal';
 }
 
+let cameraStarting = false;
+
 async function startCamera() {
+  if (cameraStarting) return;
+  cameraStarting = true;
   statusText.textContent = 'Menyalakan kamera...';
+
   if (stream) {
     stream.getTracks().forEach(t => t.stop());
+    stream = null;
   }
+  video.srcObject = null;
+
+  async function tryGetStream(constraints) {
+    return await navigator.mediaDevices.getUserMedia(constraints);
+  }
+
   try {
-    stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: currentFacing, width: { ideal: 1280 }, height: { ideal: 1280 } },
-      audio: false
-    });
+    try {
+      stream = await tryGetStream({
+        video: { facingMode: { exact: currentFacing }, width: { ideal: 1280 }, height: { ideal: 1280 } },
+        audio: false
+      });
+    } catch (e1) {
+      try {
+        stream = await tryGetStream({
+          video: { facingMode: currentFacing, width: { ideal: 1280 }, height: { ideal: 1280 } },
+          audio: false
+        });
+      } catch (e2) {
+        stream = await tryGetStream({ video: true, audio: false });
+      }
+    }
+
     video.srcObject = stream;
+    video.muted = true;
     await video.play();
     statusText.textContent = 'Arahkan kamera ke QR code';
-    requestAnimationFrame(tick);
+    startOverlay.style.display = 'none';
   } catch (err) {
-    statusText.textContent = 'Gagal akses kamera: ' + err.message;
+    statusText.textContent = 'Gagal akses kamera: ' + err.message + ' (tap tombol untuk coba lagi)';
+    startOverlay.style.display = 'flex';
+  } finally {
+    cameraStarting = false;
   }
 }
 
@@ -466,8 +499,12 @@ btnCopy.addEventListener('click', () => {
   copyText(resiNumber.textContent);
 });
 
+btnStart.addEventListener('click', () => {
+  startCamera();
+});
+
 renderHistory();
-startCamera();
+requestAnimationFrame(tick);
 </script>
 </body>
 </html>
