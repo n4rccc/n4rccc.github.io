@@ -1,1 +1,473 @@
-# n4rccc.github.io
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Scan Resi Retur</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.js"></script>
+<style>
+  :root{
+    --bg:#0f1115;
+    --card:#171a21;
+    --card2:#1f232c;
+    --accent:#4f7cff;
+    --accent2:#38d996;
+    --text:#e9edf5;
+    --muted:#8b93a5;
+    --border:#2a2f3a;
+    --danger:#ff5c5c;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    background:var(--bg);
+    color:var(--text);
+    min-height:100vh;
+    padding-bottom:24px;
+  }
+  header{
+    padding:16px 16px 8px;
+    text-align:center;
+  }
+  header h1{
+    font-size:18px;
+    margin:0 0 2px;
+    font-weight:700;
+  }
+  header p{
+    margin:0;
+    font-size:12.5px;
+    color:var(--muted);
+  }
+  .scan-wrap{
+    margin:14px;
+    border-radius:16px;
+    overflow:hidden;
+    background:#000;
+    position:relative;
+    aspect-ratio:1/1;
+    max-width:420px;
+    margin-left:auto;
+    margin-right:auto;
+    border:1px solid var(--border);
+  }
+  video{
+    width:100%;
+    height:100%;
+    object-fit:cover;
+    display:block;
+  }
+  .reticle{
+    position:absolute;
+    inset:0;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    pointer-events:none;
+  }
+  .reticle-box{
+    width:64%;
+    height:64%;
+    border:2px solid rgba(79,124,255,0.85);
+    border-radius:14px;
+    box-shadow:0 0 0 999px rgba(0,0,0,0.35);
+  }
+  .reticle-box.hit{
+    border-color:var(--accent2);
+    box-shadow:0 0 0 999px rgba(0,0,0,0.35), 0 0 18px rgba(56,217,150,0.7);
+  }
+  .status-bar{
+    max-width:420px;
+    margin:0 auto;
+    padding:0 14px;
+    display:flex;
+    justify-content:center;
+  }
+  .status{
+    font-size:12.5px;
+    color:var(--muted);
+    text-align:center;
+    padding:6px 0;
+  }
+  .controls{
+    max-width:420px;
+    margin:6px auto 0;
+    padding:0 14px;
+    display:flex;
+    gap:8px;
+  }
+  button{
+    font-family:inherit;
+    border:none;
+    border-radius:10px;
+    padding:11px 14px;
+    font-size:13.5px;
+    font-weight:600;
+    cursor:pointer;
+  }
+  .btn-primary{
+    background:var(--accent);
+    color:#fff;
+    flex:1;
+  }
+  .btn-ghost{
+    background:var(--card2);
+    color:var(--text);
+    border:1px solid var(--border);
+  }
+  .result-card{
+    max-width:420px;
+    margin:14px auto 0;
+    padding:0 14px;
+  }
+  .last-result{
+    background:var(--card);
+    border:1px solid var(--border);
+    border-radius:14px;
+    padding:14px;
+    display:none;
+  }
+  .last-result.show{display:block;}
+  .badge{
+    display:inline-block;
+    font-size:11px;
+    font-weight:700;
+    padding:3px 9px;
+    border-radius:999px;
+    background:rgba(79,124,255,0.15);
+    color:var(--accent);
+    margin-bottom:8px;
+    letter-spacing:0.3px;
+  }
+  .resi-number{
+    font-size:19px;
+    font-weight:700;
+    word-break:break-all;
+    margin-bottom:10px;
+    font-family:"SF Mono",Consolas,monospace;
+  }
+  .row-actions{
+    display:flex;
+    gap:8px;
+  }
+  .row-actions button{flex:1; font-size:13px;}
+  .history-section{
+    max-width:420px;
+    margin:20px auto 0;
+    padding:0 14px;
+  }
+  .history-head{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    margin-bottom:8px;
+  }
+  .history-head h2{
+    font-size:14px;
+    margin:0;
+    color:var(--muted);
+    font-weight:600;
+  }
+  .history-head button{
+    background:none;
+    color:var(--danger);
+    font-size:12px;
+    padding:4px 6px;
+  }
+  .history-list{
+    display:flex;
+    flex-direction:column;
+    gap:8px;
+  }
+  .history-item{
+    background:var(--card);
+    border:1px solid var(--border);
+    border-radius:12px;
+    padding:10px 12px;
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    gap:10px;
+  }
+  .history-item .info{min-width:0;}
+  .history-item .code{
+    font-family:"SF Mono",Consolas,monospace;
+    font-size:13.5px;
+    font-weight:600;
+    word-break:break-all;
+  }
+  .history-item .meta{
+    font-size:11px;
+    color:var(--muted);
+    margin-top:2px;
+  }
+  .history-item .courier-tag{
+    font-size:10px;
+    font-weight:700;
+    color:var(--accent2);
+  }
+  .copy-mini{
+    background:var(--card2);
+    color:var(--text);
+    border:1px solid var(--border);
+    padding:6px 10px;
+    font-size:11.5px;
+    flex-shrink:0;
+  }
+  .empty-state{
+    text-align:center;
+    color:var(--muted);
+    font-size:12.5px;
+    padding:20px 0;
+  }
+  .toast{
+    position:fixed;
+    bottom:20px;
+    left:50%;
+    transform:translateX(-50%) translateY(20px);
+    background:var(--accent2);
+    color:#06251a;
+    padding:10px 18px;
+    border-radius:999px;
+    font-size:13px;
+    font-weight:700;
+    opacity:0;
+    transition:all .25s ease;
+    pointer-events:none;
+    white-space:nowrap;
+  }
+  .toast.show{
+    opacity:1;
+    transform:translateX(-50%) translateY(0);
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Scan Resi Retur</h1>
+  <p>Arahin kamera ke QR code di label resi</p>
+</header>
+
+<div class="scan-wrap">
+  <video id="video" playsinline muted></video>
+  <div class="reticle"><div class="reticle-box" id="reticleBox"></div></div>
+</div>
+<div class="status-bar"><div class="status" id="statusText">Menyalakan kamera...</div></div>
+
+<div class="controls">
+  <button class="btn-primary" id="btnResume">Scan Lagi</button>
+  <button class="btn-ghost" id="btnSwitch">Ganti Kamera</button>
+</div>
+
+<div class="result-card">
+  <div class="last-result" id="lastResult">
+    <div class="badge" id="courierBadge">RESI</div>
+    <div class="resi-number" id="resiNumber">-</div>
+    <div class="row-actions">
+      <button class="btn-ghost" id="btnCopy">Copy</button>
+    </div>
+  </div>
+</div>
+
+<div class="history-section">
+  <div class="history-head">
+    <h2>Riwayat Scan (<span id="histCount">0</span>)</h2>
+    <button id="btnClear">Hapus Semua</button>
+  </div>
+  <div class="history-list" id="historyList">
+    <div class="empty-state" id="emptyState">Belum ada resi ke-scan</div>
+  </div>
+</div>
+
+<div class="toast" id="toast">Berhasil di-copy</div>
+
+<script>
+const video = document.getElementById('video');
+const statusText = document.getElementById('statusText');
+const reticleBox = document.getElementById('reticleBox');
+const lastResult = document.getElementById('lastResult');
+const resiNumber = document.getElementById('resiNumber');
+const courierBadge = document.getElementById('courierBadge');
+const historyList = document.getElementById('historyList');
+const emptyState = document.getElementById('emptyState');
+const histCount = document.getElementById('histCount');
+const toast = document.getElementById('toast');
+const btnResume = document.getElementById('btnResume');
+const btnSwitch = document.getElementById('btnSwitch');
+const btnClear = document.getElementById('btnClear');
+const btnCopy = document.getElementById('btnCopy');
+
+let history = [];
+let scanning = true;
+let currentFacing = 'environment';
+let stream = null;
+let barcodeDetector = null;
+let canvas = document.createElement('canvas');
+let ctx = canvas.getContext('2d', { willReadFrequently: true });
+let lastCode = null;
+let lastCodeTime = 0;
+
+// Deteksi kurir berdasarkan prefix nomor resi
+function detectCourier(code) {
+  const c = code.toUpperCase();
+  if (c.startsWith('SPXID') || c.startsWith('SPX')) return 'Shopee Express (SPX)';
+  if (c.startsWith('JY') || c.startsWith('JNT') || c.startsWith('JT')) return 'J&T Express';
+  if (c.startsWith('JNE') || c.startsWith('JP')) return 'JNE';
+  if (c.startsWith('ID') && c.length > 10) return 'ID Express';
+  if (c.startsWith('SICEPAT') || c.startsWith('SP')) return 'SiCepat';
+  if (c.startsWith('AJ')) return 'AnterAja';
+  if (c.startsWith('NX')) return 'Ninja Xpress';
+  if (c.startsWith('LEX') || c.startsWith('LP')) return 'Lion Parcel';
+  if (c.startsWith('TIKI')) return 'TIKI';
+  if (c.startsWith('POS')) return 'Pos Indonesia';
+  return 'Kurir Tidak Dikenal';
+}
+
+async function startCamera() {
+  statusText.textContent = 'Menyalakan kamera...';
+  if (stream) {
+    stream.getTracks().forEach(t => t.stop());
+  }
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: currentFacing, width: { ideal: 1280 }, height: { ideal: 1280 } },
+      audio: false
+    });
+    video.srcObject = stream;
+    await video.play();
+    statusText.textContent = 'Arahkan kamera ke QR code';
+    requestAnimationFrame(tick);
+  } catch (err) {
+    statusText.textContent = 'Gagal akses kamera: ' + err.message;
+  }
+}
+
+if ('BarcodeDetector' in window) {
+  BarcodeDetector.getSupportedFormats().then(formats => {
+    if (formats.includes('qr_code')) {
+      barcodeDetector = new BarcodeDetector({ formats: ['qr_code'] });
+    }
+  }).catch(() => { barcodeDetector = null; });
+}
+
+async function tick() {
+  if (!scanning) {
+    requestAnimationFrame(tick);
+    return;
+  }
+  if (video.readyState === video.HAVE_ENOUGH_DATA) {
+    let code = null;
+    if (barcodeDetector) {
+      try {
+        const barcodes = await barcodeDetector.detect(video);
+        if (barcodes.length > 0) code = barcodes[0].rawValue;
+      } catch (e) { /* fallback below */ }
+    }
+    if (!code && typeof jsQR === 'function') {
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const result = jsQR(imageData.data, imageData.width, imageData.height);
+      if (result && result.data) code = result.data;
+    }
+    if (code) {
+      handleDetected(code);
+    }
+  }
+  requestAnimationFrame(tick);
+}
+
+function handleDetected(code) {
+  const now = Date.now();
+  if (code === lastCode && now - lastCodeTime < 2500) return; // avoid duplicate spam
+  lastCode = code;
+  lastCodeTime = now;
+
+  reticleBox.classList.add('hit');
+  setTimeout(() => reticleBox.classList.remove('hit'), 600);
+
+  const courier = detectCourier(code);
+  resiNumber.textContent = code;
+  courierBadge.textContent = courier;
+  lastResult.classList.add('show');
+  statusText.textContent = 'Berhasil scan! Tap "Scan Lagi" untuk lanjut';
+
+  addToHistory(code, courier);
+  scanning = false; // pause until user resumes, avoids re-scan spam
+}
+
+function addToHistory(code, courier) {
+  const entry = { code, courier, time: new Date() };
+  history.unshift(entry);
+  renderHistory();
+}
+
+function renderHistory() {
+  histCount.textContent = history.length;
+  if (history.length === 0) {
+    historyList.innerHTML = '';
+    historyList.appendChild(emptyState);
+    return;
+  }
+  historyList.innerHTML = '';
+  history.forEach((item, idx) => {
+    const div = document.createElement('div');
+    div.className = 'history-item';
+    const timeStr = item.time.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+    div.innerHTML = `
+      <div class="info">
+        <div class="code">${item.code}</div>
+        <div class="meta"><span class="courier-tag">${item.courier}</span> · ${timeStr}</div>
+      </div>
+      <button class="copy-mini" data-idx="${idx}">Copy</button>
+    `;
+    historyList.appendChild(div);
+  });
+  historyList.querySelectorAll('.copy-mini').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const idx = btn.getAttribute('data-idx');
+      copyText(history[idx].code);
+    });
+  });
+}
+
+function copyText(text) {
+  navigator.clipboard.writeText(text).then(() => showToast('Resi disalin: ' + text));
+}
+
+function showToast(msg) {
+  toast.textContent = msg;
+  toast.classList.add('show');
+  setTimeout(() => toast.classList.remove('show'), 1600);
+}
+
+btnResume.addEventListener('click', () => {
+  scanning = true;
+  statusText.textContent = 'Arahkan kamera ke QR code';
+});
+
+btnSwitch.addEventListener('click', () => {
+  currentFacing = currentFacing === 'environment' ? 'user' : 'environment';
+  startCamera();
+});
+
+btnClear.addEventListener('click', () => {
+  if (history.length === 0) return;
+  if (confirm('Hapus semua riwayat scan?')) {
+    history = [];
+    renderHistory();
+  }
+});
+
+btnCopy.addEventListener('click', () => {
+  copyText(resiNumber.textContent);
+});
+
+renderHistory();
+startCamera();
+</script>
+</body>
+</html>
