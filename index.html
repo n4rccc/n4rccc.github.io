@@ -3,17 +3,19 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Web Camera Modern</title>
+    <title>QR Scanner Modern</title>
+    <!-- Library jsQR untuk scanning -->
+    <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
     <style>
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
             -webkit-tap-highlight-color: transparent;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
         }
 
         body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
             background-color: #000;
             color: #fff;
             overflow: hidden;
@@ -22,11 +24,9 @@
             flex-direction: column;
         }
 
-        /* Layar Kamera */
         #camera-container {
             flex: 1;
             position: relative;
-            background-color: #000;
             display: flex;
             justify-content: center;
             align-items: center;
@@ -36,22 +36,106 @@
             width: 100%;
             height: 100%;
             object-fit: cover;
-            transform: scaleX(1); /* Default, diubah ke -1 jika kamera depan */
         }
 
-        /* Overlay UI */
-        .overlay {
+        /* Overlay Gelap dengan lubang di tengah (Frame Scanner) */
+        #overlay {
             position: absolute;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
-            pointer-events: none; /* Agar tidak menghalangi klik */
+            pointer-events: none;
             z-index: 10;
-            background: linear-gradient(to bottom, rgba(0,0,0,0.4) 0%, rgba(0,0,0,0) 20%, rgba(0,0,0,0) 80%, rgba(0,0,0,0.4) 100%);
         }
 
-        /* Area Tombol Bawah */
+        /* Garis Scanner Animasi */
+        #scan-line {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 70vw;
+            max-width: 300px;
+            height: 70vw;
+            max-height: 300px;
+            border: 3px solid rgba(255, 255, 255, 0.8);
+            border-radius: 20px;
+            box-shadow: 0 0 0 100vmax rgba(0, 0, 0, 0.6); /* Efek gelap di luar frame */
+            z-index: 15;
+        }
+
+        #scan-line::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 5px;
+            background: #00ff00;
+            box-shadow: 0 0 10px #00ff00;
+            border-radius: 5px;
+            animation: scan 2s infinite;
+        }
+
+        @keyframes scan {
+            0% { top: 0; }
+            50% { top: calc(100% - 5px); }
+            100% { top: 0; }
+        }
+
+        /* Canvas tersembunyi untuk proses QR */
+        #canvas {
+            display: none;
+        }
+
+        /* Area Hasil Scan */
+        #result-box {
+            position: absolute;
+            bottom: 120px;
+            left: 50%;
+            transform: translateX(-50%) translateY(20px);
+            width: 80%;
+            max-width: 400px;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            padding: 15px;
+            border-radius: 12px;
+            text-align: center;
+            opacity: 0;
+            transition: all 0.3s ease;
+            z-index: 20;
+            pointer-events: none;
+        }
+
+        #result-box.show {
+            opacity: 1;
+            transform: translateX(-50%) translateY(0);
+            pointer-events: auto;
+        }
+
+        #result-text {
+            color: #fff;
+            font-size: 16px;
+            word-break: break-all;
+            margin-bottom: 10px;
+        }
+
+        .action-btn {
+            background: #0066ff;
+            color: white;
+            border: none;
+            padding: 8px 20px;
+            border-radius: 8px;
+            font-weight: bold;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-block;
+            margin-top: 5px;
+        }
+
+        /* Tombol Bawah */
         .controls {
             position: absolute;
             bottom: 0;
@@ -59,9 +143,10 @@
             width: 100%;
             padding: 30px 20px 40px 20px;
             display: flex;
-            justify-content: space-around;
+            justify-content: center;
             align-items: center;
             z-index: 20;
+            background: linear-gradient(to top, #000 0%, transparent 100%);
         }
 
         .btn-circle {
@@ -75,45 +160,16 @@
             align-items: center;
             cursor: pointer;
             backdrop-filter: blur(5px);
-            transition: transform 0.2s, background 0.2s;
-            pointer-events: auto;
+            transition: transform 0.2s;
         }
 
         .btn-circle:active {
             transform: scale(0.9);
-            background: rgba(255, 255, 255, 0.5);
         }
 
         .btn-circle img {
             width: 28px;
             height: 28px;
-        }
-
-        .btn-capture {
-            width: 80px;
-            height: 80px;
-            border-radius: 50%;
-            background: #fff;
-            border: 4px solid rgba(255, 255, 255, 0.4);
-            box-shadow: 0 0 15px rgba(0,0,0,0.3);
-        }
-
-        .btn-capture:active {
-            background: #ddd;
-        }
-
-        /* Efek Flash saat Capture */
-        #flash-overlay {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: #fff;
-            opacity: 0;
-            pointer-events: none;
-            z-index: 30;
-            transition: opacity 0.2s;
         }
 
         .loading-spinner {
@@ -141,56 +197,58 @@
     <div id="camera-container">
         <div id="loading-spinner" class="loading-spinner"></div>
         <video id="video" autoplay playsinline muted></video>
-        <div class="overlay"></div>
-        <div id="flash-overlay"></div>
+        <canvas id="canvas"></canvas>
         
+        <div id="overlay"></div>
+        <div id="scan-line"></div>
+
+        <div id="result-box">
+            <div id="result-text">Tidak ada data</div>
+            <a href="#" class="action-btn" id="open-link-btn" style="display:none;">Buka Link</a>
+            <br>
+            <button class="action-btn" id="reset-btn" style="background: #444; margin-top: 10px;">Scan Lagi</button>
+        </div>
+
         <div class="controls">
-            <!-- Tombol Switch Kamera -->
             <div class="btn-circle" id="switch-btn">
                 <img src="https://api.iconify.design/ic/round-flip-camera-ios.svg?color=white" alt="Switch">
-            </div>
-            
-            <!-- Tombol Capture -->
-            <div class="btn-circle btn-capture" id="capture-btn"></div>
-            
-            <!-- Tombol Download/Result (Hidden awalnya) -->
-            <div class="btn-circle" id="download-btn" style="opacity: 0.5; pointer-events: none;">
-                <img src="https://api.iconify.design/ic/round-download.svg?color=white" alt="Download">
             </div>
         </div>
     </div>
 
     <script>
         const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const context = canvas.getContext('2d', { willReadFrequently: true });
         const switchBtn = document.getElementById('switch-btn');
-        const captureBtn = document.getElementById('capture-btn');
-        const downloadBtn = document.getElementById('download-btn');
-        const flashOverlay = document.getElementById('flash-overlay');
         const loadingSpinner = document.getElementById('loading-spinner');
+        const resultBox = document.getElementById('result-box');
+        const resultText = document.getElementById('result-text');
+        const openLinkBtn = document.getElementById('open-link-btn');
+        const resetBtn = document.getElementById('reset-btn');
 
         let currentStream = null;
-        let currentFacingMode = 'environment'; // Default ke kamera belakang
-        let imageCaptureUrl = null;
+        let currentFacingMode = 'environment'; // Default belakang
+        let scanning = true;
 
-        // Fungsi untuk menghentikan semua track dari stream sebelumnya (PENTING!)
         function stopCurrentStream() {
             if (currentStream) {
-                currentStream.getTracks().forEach(track => {
-                    track.stop();
-                    console.log("Track stopped:", track.kind);
-                });
+                currentStream.getTracks().forEach(track => track.stop());
             }
         }
 
-        // Fungsi utama untuk menyalakan kamera
         async function startCamera(facingMode) {
+            scanning = false; // Hentikan scan saat loading
             loadingSpinner.style.display = 'block';
-            stopCurrentStream(); // Selalu hentikan kamera lama sebelum memulai yang baru
+            stopCurrentStream();
 
             try {
+                // PENTING: Batasi resolusi agar Android tidak hang/loading terus
                 const constraints = {
                     video: {
-                        facingMode: { ideal: facingMode } // Gunakan ideal agar tidak error jika kamera tidak ada
+                        facingMode: { ideal: facingMode },
+                        width: { ideal: 1280 },  // Batas lebar
+                        height: { ideal: 720 }   // Batas tinggi
                     },
                     audio: false
                 };
@@ -198,76 +256,79 @@
                 currentStream = await navigator.mediaDevices.getUserMedia(constraints);
                 video.srcObject = currentStream;
 
-                // Jika kamera depan, mirror videonya
-                if (facingMode === 'user') {
-                    video.style.transform = 'scaleX(-1)';
-                } else {
-                    video.style.transform = 'scaleX(1)';
-                }
+                // Tunggu video benar-benar siap sebelum menghilangkan loading
+                video.onloadedmetadata = () => {
+                    video.play();
+                    loadingSpinner.style.display = 'none';
+                    scanning = true;
+                    requestAnimationFrame(tick); // Mulai scanning
+                };
 
                 currentFacingMode = facingMode;
-                loadingSpinner.style.display = 'none';
             } catch (err) {
                 console.error("Error accessing camera:", err);
-                alert("Gagal mengakses kamera. Pastikan Anda memberikan izin dan menggunakan HTTPS.");
+                alert("Gagal mengakses kamera. Cek izin browser Anda.");
                 loadingSpinner.style.display = 'none';
             }
         }
 
-        // Event Listener untuk Tombol Switch Kamera
+        // Fungsi Looping untuk membaca QR
+        function tick() {
+            if (!scanning) return;
+
+            if (video.readyState === video.HAVE_ENOUGH_DATA) {
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                
+                // Ambil frame video ke canvas
+                context.drawImage(video, 0, 0, canvas.width, canvas.height);
+                
+                // Baca data gambar
+                const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+                
+                // Proses dengan jsQR
+                const code = jsQR(imageData.data, imageData.width, imageData.height, {
+                    inversionAttempts: "dontInvert",
+                });
+
+                if (code) {
+                    handleQRResult(code.data);
+                    return; // Berhenti scanning jika ketemu
+                }
+            }
+            requestAnimationFrame(tick);
+        }
+
+        function handleQRResult(data) {
+            scanning = false;
+            resultText.innerText = data;
+            
+            // Cek apakah hasilnya link
+            if (data.startsWith('http://') || data.startsWith('https://')) {
+                openLinkBtn.href = data;
+                openLinkBtn.style.display = 'inline-block';
+            } else {
+                openLinkBtn.style.display = 'none';
+            }
+
+            resultBox.classList.add('show');
+        }
+
+        // Event Listeners
         switchBtn.addEventListener('click', () => {
             const newFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
+            resultBox.classList.remove('show');
             startCamera(newFacingMode);
         });
 
-        // Event Listener untuk Tombol Capture
-        captureBtn.addEventListener('click', () => {
-            // Efek Flash
-            flashOverlay.style.opacity = '1';
-            setTimeout(() => {
-                flashOverlay.style.opacity = '0';
-            }, 200);
-
-            // Capture gambar ke Canvas
-            const canvas = document.createElement('canvas');
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-            const context = canvas.getContext('2d');
-
-            // Jika kamera depan, balik gambar saat di-draw di canvas agar sama dengan tampilan video
-            if (currentFacingMode === 'user') {
-                context.translate(canvas.width, 0);
-                context.scale(-1, 1);
-            }
-
-            context.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-            // Ubah ke URL gambar
-            imageCaptureUrl = canvas.toDataURL('image/jpeg', 0.8);
-
-            // Aktifkan tombol download
-            downloadBtn.style.opacity = '1';
-            downloadBtn.style.pointerEvents = 'auto';
-            
-            // Animasi tombol capture
-            captureBtn.style.background = '#bbb';
-            setTimeout(() => captureBtn.style.background = '#fff', 200);
+        resetBtn.addEventListener('click', () => {
+            resultBox.classList.remove('show');
+            scanning = true;
+            requestAnimationFrame(tick);
         });
 
-        // Event Listener untuk Tombol Download
-        downloadBtn.addEventListener('click', () => {
-            if (imageCaptureUrl) {
-                const link = document.createElement('a');
-                link.href = imageCaptureUrl;
-                link.download = `captured_photo_${Date.now()}.jpg`;
-                link.click();
-            }
-        });
-
-        // Mulai kamera saat halaman pertama kali dimuat
-        // Default mencari kamera belakang ('environment')
+        // Mulai aplikasi
         startCamera('environment');
     </script>
 </body>
 </html>
-</!DOCTYPE>
