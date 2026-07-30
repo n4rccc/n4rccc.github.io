@@ -554,6 +554,7 @@
 <div class="controls">
   <button class="btn-primary" id="btnResume">Scan Lagi</button>
   <button class="btn-ghost" id="btnSwitch">Ganti Kamera</button>
+  <button class="btn-ghost" id="btnStop" title="Matikan kamera">Tutup Kamera</button>
 </div>
 <div class="controls" id="deviceRow" style="display:none;">
   <select id="deviceSelect"></select>
@@ -607,6 +608,7 @@ const btnApplyDeviceId = document.getElementById('btnApplyDeviceId');
 const btnClearDeviceId = document.getElementById('btnClearDeviceId');
 const settingsCurrent = document.getElementById('settingsCurrent');
 const knownCams = document.getElementById('knownCams');
+const btnStop = document.getElementById('btnStop');
 
 let manualDeviceId = null;
 try { manualDeviceId = localStorage.getItem('scanresi_device_id') || null; } catch (e) { manualDeviceId = null; }
@@ -760,6 +762,38 @@ if (manualDeviceId) {
   settingsCurrent.textContent = 'ID tersimpan: ' + manualDeviceId;
 }
 
+// Cari deviceId kamera belakang UTAMA secara eksplisit, bukan nyerahin
+// pemilihan ke browser lewat facingMode -- karena di custom ROM, facingMode
+// sering di-resolve ke kamera logical/virtual (macro/wide/depth) yang
+// "gampang" buat browser tapi frame-nya blank, bukan sensor utama index 0.
+async function pickRearDeviceId() {
+  // kalau belum ada label kamera (belum pernah dapet izin), minta izin dulu
+  // pake stream sementara, langsung distop, cuma buat "membuka" label device
+  const hasLabels = availableCameras.some(d => d.label);
+  if (!hasLabels) {
+    try {
+      const permStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false });
+      permStream.getTracks().forEach(t => t.stop());
+      await new Promise(r => setTimeout(r, 200));
+    } catch (e) { /* kalau ini gagal, nanti fallback facingMode biasa yang nangani */ }
+    await enumerateCameras();
+  }
+
+  const rearCams = availableCameras.filter(d => !/front|user|selfie/i.test(d.label));
+  if (rearCams.length === 0) return null;
+
+  // prioritas: label yang eksplisit nyebut kamera utama/index 0, hindari
+  // varian wide/ultra/tele/macro/depth yang biasanya kamera tambahan
+  const isAux = (label) => /wide|ultra|tele|macro|depth|bokeh/i.test(label);
+  const primary =
+    rearCams.find(d => /(^|\s)0(\s|,|$)/.test(d.label) && !isAux(d.label)) ||
+    rearCams.find(d => /back|rear/i.test(d.label) && !isAux(d.label)) ||
+    rearCams.find(d => !isAux(d.label)) ||
+    rearCams[0];
+
+  return primary.deviceId;
+}
+
 async function startCamera(opts) {
   opts = opts || {};
   if (cameraStarting) return;
@@ -787,20 +821,27 @@ async function startCamera(opts) {
   const softRes = { width: { ideal: 1280 }, height: { ideal: 960 } };
 
   try {
-    if (opts.deviceId) {
-      // user pilih device manual (dropdown / settings) -- tetap kasih fallback
-      // berjenjang biar kalau exact match gagal, gak langsung error total
+    let resolvedDeviceId = opts.deviceId || null;
+
+    // startup otomatis buat kamera belakang: coba resolve deviceId eksplisit dulu
+    if (!resolvedDeviceId && currentFacing === 'environment') {
+      resolvedDeviceId = await pickRearDeviceId();
+    }
+
+    if (resolvedDeviceId) {
+      // pakai deviceId spesifik -- tetap kasih fallback berjenjang biar kalau
+      // exact match gagal, gak langsung error total
       try {
-        stream = await tryGetStream({ video: { deviceId: { exact: opts.deviceId }, ...softRes }, audio: false });
+        stream = await tryGetStream({ video: { deviceId: { exact: resolvedDeviceId }, ...softRes }, audio: false });
       } catch (eA) {
         try {
-          stream = await tryGetStream({ video: { deviceId: opts.deviceId, ...softRes }, audio: false });
+          stream = await tryGetStream({ video: { deviceId: resolvedDeviceId, ...softRes }, audio: false });
         } catch (eB) {
           stream = await tryGetStream({ video: true, audio: false });
         }
       }
       const track0 = stream.getVideoTracks()[0];
-      currentDeviceId = track0 ? track0.getSettings().deviceId : opts.deviceId;
+      currentDeviceId = track0 ? track0.getSettings().deviceId : resolvedDeviceId;
     } else {
       try {
         stream = await tryGetStream({
@@ -1000,6 +1041,38 @@ btnStart.addEventListener('click', () => {
 
 deviceSelect.addEventListener('change', () => {
   startCamera({ deviceId: deviceSelect.value });
+});
+
+// ---------- pelepasan kamera paksa ----------
+// penting: kalau stream nggak di-stop eksplisit pas tab disembunyikan/ditutup,
+// di sebagian Android (custom ROM) hardware kameranya bisa "nyangkut" kekunci
+// browser dan bikin aplikasi kamera bawaan HP nggak bisa dibuka sampai tab
+// benar-benar ditutup. Jadi kita paksa lepas di semua skenario ini.
+function stopCameraHard() {
+  if (stream) {
+    stream.getTracks().forEach(t => t.stop());
+    stream = null;
+  }
+  try { video.pause(); } catch (e) {}
+  video.srcObject = null;
+  scanning = false;
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    stopCameraHard();
+    startOverlay.style.display = 'flex';
+    statusText.textContent = 'Kamera dimatikan otomatis (tab disembunyikan). Tap "Mulai Scan" lagi.';
+  }
+});
+
+window.addEventListener('pagehide', stopCameraHard);
+window.addEventListener('beforeunload', stopCameraHard);
+
+btnStop.addEventListener('click', () => {
+  stopCameraHard();
+  startOverlay.style.display = 'flex';
+  statusText.textContent = 'Kamera dimatikan. Tap "Mulai Scan" buat nyalain lagi.';
 });
 
 renderHistory();
