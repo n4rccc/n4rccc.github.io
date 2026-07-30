@@ -503,6 +503,77 @@
     flex-shrink:0;
   }
 
+  .last-result.duplicate{
+    border-color:rgba(255,107,107,0.5);
+    background-color:#241A1C;
+  }
+  .last-result.duplicate .badge{
+    background:rgba(255,107,107,0.16);
+    color:var(--danger);
+    border-color:rgba(255,107,107,0.35);
+  }
+
+  .dup-overlay{
+    position:fixed;
+    inset:0;
+    background:rgba(8,9,12,0.72);
+    backdrop-filter:blur(3px);
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding:20px;
+    opacity:0;
+    pointer-events:none;
+    transition:opacity .2s ease;
+    z-index:100;
+  }
+  .dup-overlay.show{
+    opacity:1;
+    pointer-events:auto;
+  }
+  .dup-card{
+    background:var(--surface);
+    border:1px solid rgba(255,107,107,0.35);
+    border-radius:18px;
+    padding:24px 20px 20px;
+    max-width:340px;
+    width:100%;
+    text-align:center;
+    box-shadow:0 24px 60px -20px rgba(0,0,0,0.7);
+    transform:translateY(8px);
+    transition:transform .2s ease;
+  }
+  .dup-overlay.show .dup-card{ transform:translateY(0); }
+  .dup-icon{ font-size:34px; margin-bottom:8px; }
+  .dup-title{
+    font-size:15.5px;
+    font-weight:800;
+    color:var(--danger);
+    margin-bottom:12px;
+  }
+  .dup-code{
+    font-family:var(--mono);
+    font-size:17px;
+    font-weight:700;
+    background:var(--surface2);
+    border:1px solid var(--border);
+    border-radius:10px;
+    padding:10px;
+    word-break:break-all;
+    margin-bottom:8px;
+  }
+  .dup-meta{
+    font-size:12px;
+    color:var(--muted);
+    margin-bottom:18px;
+    line-height:1.5;
+  }
+  .dup-actions{
+    display:flex;
+    gap:8px;
+  }
+  .dup-actions button{ flex:1; font-size:13px; }
+
 </style>
 </head>
 <body>
@@ -582,6 +653,19 @@
 
 <div class="toast" id="toast">Berhasil di-copy</div>
 
+<div class="dup-overlay" id="dupOverlay">
+  <div class="dup-card">
+    <div class="dup-icon">⚠️</div>
+    <div class="dup-title">Resi Sudah Pernah Di-scan</div>
+    <div class="dup-code" id="dupCode">-</div>
+    <div class="dup-meta" id="dupMeta">-</div>
+    <div class="dup-actions">
+      <button class="btn-ghost" id="btnDupSaveAnyway">Simpan Lagi</button>
+      <button class="btn-primary" id="btnDupClose">Oke, Mengerti</button>
+    </div>
+  </div>
+</div>
+
 <script>
 const video = document.getElementById('video');
 const statusText = document.getElementById('statusText');
@@ -609,6 +693,11 @@ const btnClearDeviceId = document.getElementById('btnClearDeviceId');
 const settingsCurrent = document.getElementById('settingsCurrent');
 const knownCams = document.getElementById('knownCams');
 const btnStop = document.getElementById('btnStop');
+const dupOverlay = document.getElementById('dupOverlay');
+const dupCode = document.getElementById('dupCode');
+const dupMeta = document.getElementById('dupMeta');
+const btnDupClose = document.getElementById('btnDupClose');
+const btnDupSaveAnyway = document.getElementById('btnDupSaveAnyway');
 
 let manualDeviceId = null;
 try { manualDeviceId = localStorage.getItem('scanresi_device_id') || null; } catch (e) { manualDeviceId = null; }
@@ -947,10 +1036,30 @@ function handleDetected(code) {
   resiNumber.textContent = code;
   courierBadge.textContent = courier;
   lastResult.classList.add('show');
-  statusText.textContent = 'Berhasil scan! Tap "Scan Lagi" untuk lanjut';
 
-  addToHistory(code, courier);
+  // cek apakah resi ini sudah pernah ke-scan sebelumnya
+  const existing = history.find(h => h.code === code);
+
+  if (existing) {
+    lastResult.classList.add('duplicate');
+    statusText.textContent = 'Resi ini sudah pernah di-scan sebelumnya!';
+    showDuplicateWarning(code, existing);
+  } else {
+    lastResult.classList.remove('duplicate');
+    statusText.textContent = 'Berhasil scan! Tap "Scan Lagi" untuk lanjut';
+    showToast('✓ Berhasil scan: ' + code);
+    addToHistory(code, courier);
+  }
+
   scanning = false; // pause until user resumes, avoids re-scan spam
+}
+
+function showDuplicateWarning(code, existing) {
+  const timeStr = existing.time.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+  const dateStr = existing.time.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' });
+  dupCode.textContent = code;
+  dupMeta.textContent = `Kurir: ${existing.courier} · Pertama di-scan ${dateStr}, ${timeStr}`;
+  dupOverlay.classList.add('show');
 }
 
 function addToHistory(code, courier) {
@@ -1073,6 +1182,20 @@ btnStop.addEventListener('click', () => {
   stopCameraHard();
   startOverlay.style.display = 'flex';
   statusText.textContent = 'Kamera dimatikan. Tap "Mulai Scan" buat nyalain lagi.';
+});
+
+btnDupClose.addEventListener('click', () => {
+  dupOverlay.classList.remove('show');
+  statusText.textContent = 'Tap "Scan Lagi" buat lanjut scan resi lain';
+});
+
+btnDupSaveAnyway.addEventListener('click', () => {
+  const code = dupCode.textContent;
+  const courier = detectCourier(code);
+  addToHistory(code, courier);
+  dupOverlay.classList.remove('show');
+  showToast('✓ Disimpan lagi sebagai entri baru');
+  statusText.textContent = 'Tap "Scan Lagi" buat lanjut scan resi lain';
 });
 
 renderHistory();
