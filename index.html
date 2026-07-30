@@ -1040,18 +1040,28 @@ function handleDetected(code) {
   // cek apakah resi ini sudah pernah ke-scan sebelumnya
   const existing = history.find(h => h.code === code);
 
+  // Pause scan sebentar tiap kali ada deteksi (baik baru maupun duplikat),
+  // supaya reticle/alert sempat kebaca dan kamera nggak langsung nembak ulang
+  // frame yang sama. Auto-resume sendiri setelah delay, tidak perlu tombol.
+  scanning = false;
+
   if (existing) {
     lastResult.classList.add('duplicate');
     statusText.textContent = 'Resi ini sudah pernah di-scan sebelumnya!';
     showDuplicateWarning(code, existing);
   } else {
     lastResult.classList.remove('duplicate');
-    statusText.textContent = 'Berhasil scan! Tap "Scan Lagi" untuk lanjut';
+    statusText.textContent = 'Berhasil scan: ' + code;
     showToast('✓ Berhasil scan: ' + code);
     addToHistory(code, courier);
   }
 
-  scanning = false; // pause until user resumes, avoids re-scan spam
+  setTimeout(() => {
+    scanning = true;
+    if (!existing) {
+      statusText.textContent = 'Arahkan kamera ke QR code';
+    }
+  }, 1000);
 }
 
 function showDuplicateWarning(code, existing) {
@@ -1186,7 +1196,7 @@ btnStop.addEventListener('click', () => {
 
 btnDupClose.addEventListener('click', () => {
   dupOverlay.classList.remove('show');
-  statusText.textContent = 'Tap "Scan Lagi" buat lanjut scan resi lain';
+  statusText.textContent = 'Arahkan kamera ke QR code';
 });
 
 btnDupSaveAnyway.addEventListener('click', () => {
@@ -1195,7 +1205,7 @@ btnDupSaveAnyway.addEventListener('click', () => {
   addToHistory(code, courier);
   dupOverlay.classList.remove('show');
   showToast('✓ Disimpan lagi sebagai entri baru');
-  statusText.textContent = 'Tap "Scan Lagi" buat lanjut scan resi lain';
+  statusText.textContent = 'Arahkan kamera ke QR code';
 });
 
 renderHistory();
