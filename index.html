@@ -332,31 +332,62 @@ function detectCourier(code) {
 
 let cameraStarting = false;
 
+function waitForMetadata(videoEl) {
+  return new Promise((resolve, reject) => {
+    if (videoEl.readyState >= 1) {
+      resolve();
+      return;
+    }
+    const timer = setTimeout(() => reject(new Error('Timeout nunggu kamera siap')), 6000);
+    videoEl.addEventListener('loadedmetadata', () => {
+      clearTimeout(timer);
+      resolve();
+    }, { once: true });
+  });
+}
+
+function safePlay(videoEl) {
+  const playPromise = videoEl.play();
+  if (playPromise !== undefined) {
+    return playPromise;
+  }
+  return Promise.resolve();
+}
+
 async function startCamera() {
   if (cameraStarting) return;
   cameraStarting = true;
   statusText.textContent = 'Menyalakan kamera...';
 
+  // hentikan stream lama & reset video element sepenuhnya biar tidak ada
+  // load()/play() lama yang masih pending (sumber "play() interrupted")
   if (stream) {
     stream.getTracks().forEach(t => t.stop());
     stream = null;
   }
+  try { video.pause(); } catch (e) {}
+  video.removeAttribute('src');
   video.srcObject = null;
+  video.load();
 
   async function tryGetStream(constraints) {
     return await navigator.mediaDevices.getUserMedia(constraints);
   }
 
+  // constraint resolusi dibikin longgar (ideal, bukan angka persegi kaku)
+  // karena rear camera sering nggak nyaman dipaksa square, bikin negotiation nyangkut
+  const softRes = { width: { ideal: 1280 }, height: { ideal: 960 } };
+
   try {
     try {
       stream = await tryGetStream({
-        video: { facingMode: { exact: currentFacing }, width: { ideal: 1280 }, height: { ideal: 1280 } },
+        video: { facingMode: { exact: currentFacing }, ...softRes },
         audio: false
       });
     } catch (e1) {
       try {
         stream = await tryGetStream({
-          video: { facingMode: currentFacing, width: { ideal: 1280 }, height: { ideal: 1280 } },
+          video: { facingMode: currentFacing, ...softRes },
           audio: false
         });
       } catch (e2) {
@@ -364,9 +395,13 @@ async function startCamera() {
       }
     }
 
-    video.srcObject = stream;
     video.muted = true;
-    await video.play();
+    video.srcObject = stream;
+
+    // tunggu metadata siap dulu baru play(), hindari race "interrupted by new load request"
+    await waitForMetadata(video);
+    await safePlay(video);
+
     statusText.textContent = 'Arahkan kamera ke QR code';
     startOverlay.style.display = 'none';
   } catch (err) {
